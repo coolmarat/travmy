@@ -1,8 +1,24 @@
 import 'dart:convert';
+import 'dart:math';
 
 import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+
+// Model for a question
+class Question {
+  final String question;
+  final String type;
+
+  Question({required this.question, required this.type});
+
+  factory Question.fromJson(Map<String, dynamic> json) {
+    return Question(
+      question: json['question'] as String,
+      type: json['type'] as String,
+    );
+  }
+}
 
 void main() {
   runApp(ImpostorSyndromeApp());
@@ -27,54 +43,95 @@ class QuestionsScreen extends StatefulWidget {
 }
 
 class _QuestionsScreenState extends State<QuestionsScreen> {
-  List<Map<String, String>> questions = [];
-  Map<String, int> answers = {};
-  int currentIndex = 0;
+  // State variables
+  List<Question> _unseenQuestions = [];
+  Question? _currentQuestion;
+  Map<String, int> _answers = {};
+  int _totalQuestions = 0;
+  bool _isLoading = true;
 
   @override
   void initState() {
     super.initState();
-    loadQuestions();
+    _loadQuestions();
   }
 
-  Future<void> loadQuestions() async {
+  Future<void> _loadQuestions() async {
     final String jsonString =
         await rootBundle.loadString('assets/questions.json');
     final List<dynamic> jsonData = json.decode(jsonString);
 
+    final allQuestions = jsonData.map((q) => Question.fromJson(q)).toList();
+    final answers = <String, int>{};
+    for (var q in allQuestions) {
+      answers[q.type] = 0;
+    }
+
+    // Start with a random question
+    final random = Random();
+    final firstQuestion = allQuestions[random.nextInt(allQuestions.length)];
+
+    // Create a list of remaining questions
+    final unseen = List<Question>.from(allQuestions);
+    unseen.remove(firstQuestion);
+    unseen.shuffle(random); // Shuffle the rest for variety
+
     setState(() {
-      questions = jsonData.map((q) => Map<String, String>.from(q)).toList();
-      for (var question in questions) {
-        answers[question['type']!] = 0;
-      }
+      _unseenQuestions = unseen;
+      _answers = answers;
+      _currentQuestion = firstQuestion;
+      _totalQuestions = allQuestions.length;
+      _isLoading = false;
     });
   }
 
-  void answerQuestion(bool isYes) {
+  void _answerQuestion(bool isYes) {
+    if (_currentQuestion == null) return;
+
     if (isYes) {
-      final String currentType = questions[currentIndex]['type']!;
+      final String currentType = _currentQuestion!.type;
       setState(() {
-        answers[currentType] = answers[currentType]! + 1;
+        _answers[currentType] = (_answers[currentType] ?? 0) + 1;
       });
     }
 
-    if (currentIndex < questions.length - 1) {
-      setState(() {
-        currentIndex++;
-      });
-    } else {
-      Navigator.push(
+    if (_unseenQuestions.isEmpty) {
+      // Last question was answered, go to results
+      Navigator.pushReplacement(
         context,
         MaterialPageRoute(
-          builder: (context) => ResultsScreen(answers: answers),
+          builder: (context) => ResultsScreen(answers: _answers),
         ),
       );
+    } else {
+      _showNextQuestion();
     }
+  }
+
+  void _showNextQuestion() {
+    final String lastCategory = _currentQuestion!.type;
+
+    // Find the first available question with a different category
+    final nextQuestionIndex =
+        _unseenQuestions.indexWhere((q) => q.type != lastCategory);
+
+    Question nextQuestion;
+    if (nextQuestionIndex != -1) {
+      // Found a question from a different category
+      nextQuestion = _unseenQuestions.removeAt(nextQuestionIndex);
+    } else {
+      // No questions from other categories left, just take the next available one
+      nextQuestion = _unseenQuestions.removeAt(0);
+    }
+
+    setState(() {
+      _currentQuestion = nextQuestion;
+    });
   }
 
   @override
   Widget build(BuildContext context) {
-    if (questions.isEmpty) {
+    if (_isLoading) {
       return Scaffold(
         appBar: AppBar(title: Text('Загрузка...')),
         body: Center(child: CircularProgressIndicator()),
@@ -90,7 +147,7 @@ class _QuestionsScreenState extends State<QuestionsScreen> {
               child: Padding(
                 padding: const EdgeInsets.all(16.0),
                 child: Text(
-                  questions[currentIndex]['question']!,
+                  _currentQuestion?.question ?? 'Нет вопросов',
                   textAlign: TextAlign.center,
                   style: TextStyle(fontSize: 24),
                 ),
@@ -104,7 +161,7 @@ class _QuestionsScreenState extends State<QuestionsScreen> {
               children: [
                 Expanded(
                   child: ElevatedButton(
-                    onPressed: () => answerQuestion(true),
+                    onPressed: () => _answerQuestion(true),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: Colors.green[100],
                     ),
@@ -114,7 +171,7 @@ class _QuestionsScreenState extends State<QuestionsScreen> {
                 SizedBox(width: 10),
                 Expanded(
                   child: ElevatedButton(
-                    onPressed: () => answerQuestion(false),
+                    onPressed: () => _answerQuestion(false),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: Colors.pink[50],
                     ),
@@ -130,7 +187,10 @@ class _QuestionsScreenState extends State<QuestionsScreen> {
               children: [
                 SizedBox(height: 8),
                 LinearProgressIndicator(
-                  value: (currentIndex + 1) / questions.length,
+                  value: _totalQuestions > 0
+                      ? (_totalQuestions - _unseenQuestions.length) /
+                          _totalQuestions
+                      : 0,
                   backgroundColor: Colors.grey[200],
                   valueColor: AlwaysStoppedAnimation<Color>(Colors.blue),
                   minHeight: 10,
@@ -207,12 +267,17 @@ class _ResultsScreenState extends State<ResultsScreen> {
         .map((type) => MapEntry(type, widget.answers[type] ?? 0))
         .toList();
 
+    // Calculate the max Y value for the chart
+    final maxScore = widget.answers.values.isEmpty
+        ? 5 // Default value if no scores
+        : widget.answers.values.reduce(max);
+
     return Padding(
       padding: const EdgeInsets.all(16),
       child: BarChart(
         BarChartData(
           alignment: BarChartAlignment.spaceAround,
-          maxY: 6,
+          maxY: (maxScore + 1).toDouble(),
           titlesData: FlTitlesData(
             show: true,
             bottomTitles: AxisTitles(
