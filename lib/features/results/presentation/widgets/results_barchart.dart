@@ -5,11 +5,13 @@ import 'package:flutter/material.dart';
 class ResultsBarChart extends StatelessWidget {
   final List<String> typeOrder;
   final Map<String, int> answers;
+  final List<double> thresholds;
 
   const ResultsBarChart({
     super.key,
     required this.typeOrder,
     required this.answers,
+    this.thresholds = const [],
   });
 
   BarChartGroupData _generateBarGroup(
@@ -94,6 +96,27 @@ class ResultsBarChart extends StatelessWidget {
             show: true,
             drawVerticalLine: false,
             horizontalInterval: 1,
+          ),
+          extraLinesData: ExtraLinesData(
+            horizontalLines: thresholds.map((y) {
+              return HorizontalLine(
+                y: y,
+                color: Colors.red.withOpacity(0.7),
+                strokeWidth: 2,
+                dashArray: [5, 5],
+                label: HorizontalLineLabel(
+                  show: true,
+                  alignment: Alignment.topRight,
+                  padding: const EdgeInsets.only(right: 5, bottom: 2),
+                  style: TextStyle(
+                    color: Colors.black,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 12,
+                  ),
+                  labelResolver: (line) => line.y.toInt().toString(),
+                ),
+              );
+            }).toList(),
           ),
           borderData: FlBorderData(
             show: true,

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
-import 'features/questionnaire/presentation/screens/questions_screen.dart';
+
+import 'features/intro/presentation/screens/intro_screen.dart';
 
 void main() {
   runApp(const ImpostorSyndromeApp());
@@ -11,7 +12,7 @@ class ImpostorSyndromeApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return const MaterialApp(
-      home: QuestionsScreen(),
+      home: IntroScreen(),
     );
   }
 }
